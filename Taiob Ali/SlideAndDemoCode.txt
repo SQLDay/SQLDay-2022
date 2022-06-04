@@ -1,0 +1,3 @@
+Thank you for attending my session. You can download slide and demo code from:
+https://github.com/sqlworldwide/Presentations/tree/master/Think%20like%20the%20Cardinality%20Estimator
+For questions and comments please reach out to me taiob@sqlworldwide.com

